@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from rest_framework import generics, status
-from .models import RestoCard
+from .models import FoodImage, RestoCard
+from rest_framework.parsers import MultiPartParser, FormParser
 from .serializers import RestoCardSerialiser
 from rest_framework.views import APIView
 from rest_framework.response import Response 
@@ -21,21 +22,28 @@ class RestoCardFood(APIView):
             serializer = RestoCardSerialiser(food, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
     
-    
-class RestoCardListCreate(APIView):
-    def get(self, request, format=None):
-        food = RestoCard.objects.all()
-        serializer = RestoCardSerialiser(food, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
-    def post(self, request, format=None):
-        serializer = RestoCardSerialiser(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class RestoCardListCreate(generics.ListCreateAPIView):
+    queryset = RestoCard.objects.all()
+    serializer_class = RestoCardSerialiser
+    parser_classes = [MultiPartParser, FormParser]
 
+    def post(self, request, *args, **kwargs):
+        # Create the RestoCard entry first
+        serializer = self.get_serializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        food = serializer.save()
+
+        # Handle multiple images
+        files = request.FILES.getlist('images')  # "images" is the field name in Postman/Frontend
+
+        for f in files:
+            FoodImage.objects.create(food=food, image=f)
+
+        return Response(RestoCardSerialiser(food, context={'request': request}).data, status=201)
 class FoodUpdateOne(APIView):
     def get(self, request, pk=None, format=None):
         if pk:
